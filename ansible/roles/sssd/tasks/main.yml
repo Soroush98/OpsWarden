@@ -1,0 +1,73 @@
+- name: Install SSSD and LDAP client packages
+  ansible.builtin.dnf:
+    name:
+      - sssd
+      - sssd-ldap
+      - sssd-tools
+      - oddjob-mkhomedir
+      - openldap-clients
+      - authselect
+    state: present
+
+- name: Ensure CA trust directory exists
+  ansible.builtin.file:
+    path: /etc/openldap/certs
+    state: directory
+    mode: "0755"
+
+- name: Install the internal CA certificate
+  ansible.builtin.copy:
+    content: "{{ internal_ca_cert }}"
+    dest: /etc/openldap/certs/opswarden-ca.crt
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart sssd
+
+- name: Write sssd.conf
+  ansible.builtin.template:
+    src: sssd.conf.j2
+    dest: /etc/sssd/sssd.conf
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart sssd
+
+- name: Select the sssd authselect profile with home-dir creation
+  ansible.builtin.command:
+    cmd: authselect select sssd with-mkhomedir --force
+  register: authselect_result
+  changed_when: "'Profile' in authselect_result.stdout or authselect_result.rc == 0"
+
+- name: Ensure sudo resolves through SSSD (nsswitch)
+  ansible.builtin.lineinfile:
+    path: /etc/nsswitch.conf
+    regexp: '^sudoers:'
+    line: 'sudoers:    files sss'
+    create: true
+  notify: Restart sssd
+
+- name: Enable and start oddjobd (creates home dirs on first login)
+  ansible.builtin.systemd:
+    name: oddjobd
+    enabled: true
+    state: started
+
+- name: Enable and start sssd
+  ansible.builtin.systemd:
+    name: sssd
+    enabled: true
+    state: started
+
+- name: Allow SSH password authentication for directory users
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/60-opswarden.conf
+    content: |
+      # OpsWarden: allow password auth so LDAP/SSSD users can log in over SSH.
+      # (This is also what makes the brute-force triage demo realistic.)
+      PasswordAuthentication yes
+      KbdInteractiveAuthentication yes
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart sshd

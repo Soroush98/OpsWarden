@@ -1,0 +1,35 @@
+- name: Install Elastic Agent (standalone) from the official RPM
+  ansible.builtin.dnf:
+    name: "https://artifacts.elastic.co/downloads/beats/elastic-agent/elastic-agent-{{ elastic_stack_version }}-x86_64.rpm"
+    state: present
+    disable_gpg_check: true
+
+- name: Ensure the agent cert directory exists
+  ansible.builtin.file:
+    path: /etc/elastic-agent/certs
+    state: directory
+    mode: "0755"
+
+- name: Install the Elasticsearch HTTP CA
+  ansible.builtin.copy:
+    content: "{{ es_ca_cert }}"
+    dest: /etc/elastic-agent/certs/es-ca.crt
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart elastic-agent
+
+- name: Write standalone elastic-agent.yml
+  ansible.builtin.template:
+    src: elastic-agent.yml.j2
+    dest: /etc/elastic-agent/elastic-agent.yml
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart elastic-agent
+
+- name: Enable and start elastic-agent
+  ansible.builtin.systemd:
+    name: elastic-agent
+    enabled: true
+    state: started

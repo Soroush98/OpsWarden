@@ -1,0 +1,11 @@
+# Patch validation with evidence: pre-snapshot -> dnf -> post-snapshot -> diff, evidence fetched
+# to ansible/artifacts/patch-<run_id>/<host>/. The agent writes the plain-English risk summary
+# from summary.json + the raw diffs.
+# Contract (typed): patch_check_only (bool), patch_run_id (string).
+- name: Patch validation with evidence
+  hosts: role_app_server
+  become: true
+  gather_facts: false
+  serial: 1              # patch one server at a time (rolling)
+  roles:
+    - patch_evidence

@@ -1,0 +1,28 @@
+- name: "[verify] Flush SSSD cache"
+  ansible.builtin.command: sss_cache -E
+  changed_when: false
+
+- name: "[verify] NSS lookup"
+  ansible.builtin.command: "getent passwd {{ jml_username }}"
+  register: v_getent
+  changed_when: false
+  failed_when: false
+
+- name: "[verify] Directory bind as the user (proves auth path)"
+  ansible.builtin.command: >
+    ldapwhoami -ZZ -x -H {{ ldap_uri }}
+    -D "uid={{ jml_username }},ou=people,{{ ldap_base_dn }}"
+    -w "{{ lookup('pipe', 'gcloud secrets versions access latest --secret=ldap-user-' ~ jml_username ~ ' --project ' ~ gcp_project) if jml_action != 'leaver' else 'definitely-wrong' }}"
+  environment: {LDAPTLS_CACERT: /etc/openldap/certs/opswarden-ca.crt}
+  register: v_bind
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: "[verify] Result per host"
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }}:
+      nss={{ 'OK' if v_getent.rc == 0 else 'ABSENT' }}
+      bind={{ 'OK' if v_bind.rc == 0 else 'REJECTED' }}
+      (expected for {{ jml_action }})

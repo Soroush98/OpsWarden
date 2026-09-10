@@ -1,0 +1,7 @@
+# Install and configure standalone Elastic Agent on the app servers.
+- name: Ship app-server logs to Elasticsearch
+  hosts: role_app_server
+  become: true
+  gather_facts: true
+  roles:
+    - elastic_agent

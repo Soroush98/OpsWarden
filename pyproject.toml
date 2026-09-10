@@ -1,0 +1,16 @@
+[tool.uv.workspace]
+members = ["packages/opswarden_core", "services/detector", "services/api"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+# FastAPI's Depends()/Form()/Query() in argument defaults is the documented idiom, not a bug.
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Depends", "fastapi.Query", "fastapi.Header",
+    "fastapi.Form", "fastapi.Path", "fastapi.Body", "fastapi.Cookie",
+]

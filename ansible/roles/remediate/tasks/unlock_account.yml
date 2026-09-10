@@ -1,0 +1,41 @@
+- name: "[unlock] Admin bind material"
+  ansible.builtin.set_fact:
+    ldap_admin_pw: "{{ lookup('pipe', 'gcloud secrets versions access latest --secret=ldap-admin-password --project ' ~ gcp_project) }}"
+    ldap_env: {LDAPTLS_CACERT: /etc/openldap/certs/opswarden-ca.crt}
+    restore_pw: "{{ lookup('pipe', 'gcloud secrets versions access latest --secret=' ~ (secret_map[remediate_username] | default('ldap-user-' ~ remediate_username)) ~ ' --project ' ~ gcp_project) }}"
+  run_once: true
+  no_log: true
+
+- name: "[unlock] Re-enable shell + expiry and restore the known password"
+  ansible.builtin.shell: |
+    ldapmodify -ZZ -x -H {{ ldap_uri }} -D "cn=admin,{{ ldap_base_dn }}" -w "{{ ldap_admin_pw }}" <<LDIF
+    dn: uid={{ remediate_username }},ou=people,{{ ldap_base_dn }}
+    changetype: modify
+    replace: shadowExpire
+    shadowExpire: 99999
+    -
+    replace: loginShell
+    loginShell: /bin/bash
+    LDIF
+    ldappasswd -ZZ -x -H {{ ldap_uri }} -D "cn=admin,{{ ldap_base_dn }}" -w "{{ ldap_admin_pw }}" -s "{{ restore_pw }}" "uid={{ remediate_username }},ou=people,{{ ldap_base_dn }}"
+  args: {executable: /bin/bash}
+  environment: "{{ ldap_env }}"
+  delegate_to: "{{ groups['role_app_server'][0] }}"
+  run_once: true
+  no_log: true
+
+- name: "[unlock] Post-check: the account can bind again"
+  ansible.builtin.command: >
+    ldapwhoami -ZZ -x -H {{ ldap_uri }} -D "uid={{ remediate_username }},ou=people,{{ ldap_base_dn }}" -w "{{ restore_pw }}"
+  environment: "{{ ldap_env }}"
+  delegate_to: "{{ groups['role_app_server'][0] }}"
+  run_once: true
+  register: unlock_bind
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: "[unlock] Result"
+  ansible.builtin.debug:
+    msg: "UNLOCKED {{ remediate_username }} — post-check bind: {{ 'OK' if unlock_bind.rc == 0 else 'STILL REJECTED (FAIL)' }}"
+  run_once: true

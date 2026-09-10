@@ -1,0 +1,19 @@
+- name: "[block] Ensure firewalld is installed and running"
+  ansible.builtin.dnf: {name: firewalld, state: present}
+- ansible.builtin.systemd: {name: firewalld, enabled: true, state: started}
+
+- name: "[block] Drop all traffic from {{ remediate_ip }}"
+  ansible.posix.firewalld:
+    rich_rule: "rule family=ipv4 source address={{ remediate_ip }} drop"
+    permanent: true
+    immediate: true
+    state: enabled
+
+- name: "[block] Post-check: rule present"
+  ansible.builtin.command: firewall-cmd --list-rich-rules
+  register: rich
+  changed_when: false
+
+- name: "[block] Result"
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: {{ remediate_ip }} blocked = {{ remediate_ip in rich.stdout }}"

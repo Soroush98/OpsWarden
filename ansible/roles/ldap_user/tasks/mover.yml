@@ -1,0 +1,31 @@
+- name: "[mover] Resolve role + admin bind"
+  ansible.builtin.set_fact:
+    role_def: "{{ role_catalog[jml_role] }}"
+    ldap_admin_pw: "{{ lookup('pipe', 'gcloud secrets versions access latest --secret=ldap-admin-password --project ' ~ gcp_project) }}"
+    ldap_env: {LDAPTLS_CACERT: /etc/openldap/certs/opswarden-ca.crt}
+  run_once: true
+  no_log: true
+
+- name: "[mover] Set primary gid to the new role and refresh group membership"
+  ansible.builtin.shell: |
+    ldapmodify -ZZ -x -H {{ ldap_uri }} -D "cn=admin,{{ ldap_base_dn }}" -w "{{ ldap_admin_pw }}" <<LDIF
+    dn: uid={{ jml_username }},ou=people,{{ ldap_base_dn }}
+    changetype: modify
+    replace: gidNumber
+    gidNumber: {{ role_def.primary_gid }}
+    LDIF
+    # add to the new role group (ignore if already a member)
+    ldapmodify -ZZ -x -H {{ ldap_uri }} -D "cn=admin,{{ ldap_base_dn }}" -w "{{ ldap_admin_pw }}" <<LDIF || true
+    dn: cn={{ role_def.primary_group }},ou=groups,{{ ldap_base_dn }}
+    changetype: modify
+    add: memberUid
+    memberUid: {{ jml_username }}
+    LDIF
+  args: {executable: /bin/bash}
+  environment: "{{ ldap_env }}"
+  delegate_to: "{{ groups['role_app_server'][0] }}"
+  run_once: true
+  no_log: true
+
+- name: "[mover] Verify"
+  ansible.builtin.include_tasks: verify.yml

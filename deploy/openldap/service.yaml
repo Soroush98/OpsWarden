@@ -1,0 +1,32 @@
+# In-cluster service (for the agent, Keycloak, and the Ansible Job).
+apiVersion: v1
+kind: Service
+metadata:
+  name: openldap
+  namespace: identity
+spec:
+  clusterIP: None
+  selector:
+    app: openldap
+  ports:
+    - { name: ldap, port: 389, targetPort: 389 }
+    - { name: ldaps, port: 636, targetPort: 636 }
+---
+# Internal LB so the app-server VMs reach LDAP at a fixed VPC IP (10.0.0.20 = ldap.opswarden.internal).
+# Exposes 389 for StartTLS (SSSD connects with ldap_id_use_start_tls). The GKE internal passthrough
+# LB reliably forwards 389 here; clients upgrade to TLS via StartTLS and verify the internal CA.
+apiVersion: v1
+kind: Service
+metadata:
+  name: openldap-internal
+  namespace: identity
+  annotations:
+    networking.gke.io/load-balancer-type: "Internal"
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 10.0.0.20
+  externalTrafficPolicy: Local
+  selector:
+    app: openldap
+  ports:
+    - { name: ldap, port: 389, targetPort: 389 }

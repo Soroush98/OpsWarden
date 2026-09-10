@@ -1,0 +1,10 @@
+- name: Validate remediation parameters
+  ansible.builtin.assert:
+    that:
+      - remediate_action in ['lock_account','unlock_account','block_ip','unblock_ip']
+      - (remediate_action in ['lock_account','unlock_account']) | ternary(remediate_username is match('^[a-z_][a-z0-9_-]*$'), true)
+      - (remediate_action in ['block_ip','unblock_ip']) | ternary(remediate_ip is match('^[0-9]{1,3}(\.[0-9]{1,3}){3}$'), true)
+    quiet: true
+
+- name: Run {{ remediate_action }}
+  ansible.builtin.include_tasks: "{{ remediate_action }}.yml"

@@ -1,0 +1,17 @@
+# Dynamic inventory from GCE labels. Targets instances labelled role=app-server.
+# ansible_host is set to the instance NAME so the IAP ProxyCommand can open the tunnel.
+plugin: google.cloud.gcp_compute
+projects:
+  - opswarden-lab
+zones:
+  - us-central1-a
+auth_kind: application
+filters:
+  - labels.role = app-server
+hostnames:
+  - name
+compose:
+  ansible_host: name
+keyed_groups:
+  - key: labels.role
+    prefix: role

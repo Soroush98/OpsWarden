@@ -1,0 +1,23 @@
+# LDAP directory the app servers authenticate against.
+# ldap_uri uses the internal-LB IP (present in the cert SAN) rather than the DNS name because
+# SSSD's built-in resolver (c-ares) does not reliably resolve names via the GCP metadata server.
+ldap_uri: "ldap://10.0.0.20:389"
+ldap_base_dn: "dc=opswarden,dc=internal"
+ldap_bind_dn: "cn=sssd-bind,ou=services,dc=opswarden,dc=internal"
+ldap_sudo_base: "ou=sudoers,dc=opswarden,dc=internal"
+
+# Secrets are read from Secret Manager ON THE CONTROLLER at run time (gcloud ADC). They are never
+# written to the repo. lookup('pipe') preserves multi-line PEM exactly; passing PEM via
+# `-e key=value` splits it on whitespace and corrupts it.
+gcp_project: opswarden-lab
+ldap_bind_password: "{{ lookup('pipe', 'gcloud secrets versions access latest --secret=ldap-sssd-bind-password --project ' ~ gcp_project) }}"
+internal_ca_cert: "{{ lookup('pipe', 'gcloud secrets versions access latest --secret=internal-ca-cert --project ' ~ gcp_project) }}"
+
+# --- Elastic Agent (ships VM auth/syslog to Elasticsearch) ---
+elastic_stack_version: "9.5.3"
+# ES reached over its internal LB; the Go-based agent resolves the DNS name fine (unlike SSSD).
+es_host: "https://es.opswarden.internal:9200"
+es_agent_user: "opswarden-agent"
+es_agent_password: "{{ lookup('pipe', 'gcloud secrets versions access latest --secret=es-agent-password --project ' ~ gcp_project) }}"
+# ECK-generated ES HTTP CA, read live from the cluster on the controller.
+es_ca_cert: "{{ lookup('pipe', 'bash ' ~ playbook_dir ~ '/../scripts/eck-ca.sh') }}"

@@ -1,0 +1,27 @@
+dn: cn=defaults,ou=sudoers,@@BASE_DN@@
+objectClass: top
+objectClass: sudoRole
+cn: defaults
+description: Default sudo options
+sudoOption: env_keep+=SSH_AUTH_SOCK
+sudoOption: !visiblepw
+
+dn: cn=%sysadmins,ou=sudoers,@@BASE_DN@@
+objectClass: top
+objectClass: sudoRole
+cn: %sysadmins
+sudoUser: %sysadmins
+sudoHost: ALL
+sudoCommand: ALL
+sudoRunAsUser: ALL
+sudoOption: !authenticate
+
+dn: cn=svc-backup,ou=sudoers,@@BASE_DN@@
+objectClass: top
+objectClass: sudoRole
+cn: svc-backup
+sudoUser: svc-backup
+sudoHost: ALL
+sudoRunAsUser: root
+sudoCommand: /usr/bin/systemctl restart backup.service
+sudoCommand: /usr/bin/rsync

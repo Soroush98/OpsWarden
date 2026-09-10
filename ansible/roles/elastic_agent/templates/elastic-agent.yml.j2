@@ -1,0 +1,54 @@
+# Managed by Ansible (role: elastic_agent). Standalone Elastic Agent.
+# Reads the systemd journal (not raw /var/log files): the modern system integration's ingest
+# pipelines expect journald-structured input (process.name + bare message), which is what makes
+# "Failed password for <user> from <ip>" parse into user.name / source.ip / event.outcome.
+outputs:
+  default:
+    type: elasticsearch
+    hosts:
+      - "{{ es_host }}"
+    username: "{{ es_agent_user }}"
+    password: "{{ es_agent_password }}"
+    ssl:
+      certificate_authorities:
+        - /etc/elastic-agent/certs/es-ca.crt
+
+agent:
+  monitoring:
+    enabled: false
+
+inputs:
+  - type: journald
+    id: system-auth
+    use_output: default
+    data_stream:
+      namespace: default
+    streams:
+      - id: system-auth
+        data_stream:
+          dataset: system.auth
+        # authpriv (10) + auth (4): sshd, sudo, su, login, etc.
+        include_matches:
+          match:
+            - "SYSLOG_FACILITY=10"
+            - "SYSLOG_FACILITY=4"
+    processors:
+      - add_host_metadata: {}
+
+  - type: journald
+    id: system-syslog
+    use_output: default
+    data_stream:
+      namespace: default
+    streams:
+      - id: system-syslog
+        data_stream:
+          dataset: system.syslog
+        # daemon(3), kern(0), user(1): general system activity, excluding auth.
+        include_matches:
+          match:
+            - "SYSLOG_FACILITY=3"
+            - "SYSLOG_FACILITY=0"
+            - "SYSLOG_FACILITY=1"
+    processors:
+      - add_host_metadata: {}

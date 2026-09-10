@@ -1,0 +1,114 @@
+- name: "[joiner] Resolve role from catalog"
+  ansible.builtin.set_fact:
+    role_def: "{{ role_catalog[jml_role] }}"
+  run_once: true
+
+- name: "[joiner] LDAP admin bind material"
+  ansible.builtin.set_fact:
+    ldap_admin_pw: "{{ lookup('pipe', 'gcloud secrets versions access latest --secret=ldap-admin-password --project ' ~ gcp_project) }}"
+    ldap_env:
+      LDAPTLS_CACERT: /etc/openldap/certs/opswarden-ca.crt
+  run_once: true
+  no_log: true
+
+- name: "[joiner] Check whether the user already exists"
+  ansible.builtin.command: >
+    ldapsearch -ZZ -x -H {{ ldap_uri }} -D "{{ ldap_bind_dn }}" -w "{{ ldap_bind_password }}"
+    -b "ou=people,{{ ldap_base_dn }}" "(uid={{ jml_username }})" dn
+  environment: "{{ ldap_env }}"
+  delegate_to: "{{ groups['role_app_server'][0] }}"
+  run_once: true
+  changed_when: false
+  register: user_exists
+  no_log: true
+
+- name: "[joiner] Allocate the next uidNumber"
+  ansible.builtin.shell: >
+    set -o pipefail;
+    ldapsearch -ZZ -x -LLL -H {{ ldap_uri }} -D "{{ ldap_bind_dn }}" -w "{{ ldap_bind_password }}"
+    -b "ou=people,{{ ldap_base_dn }}" "(objectClass=posixAccount)" uidNumber
+    | awk '/^uidNumber:/ {print $2}' | sort -n | tail -1
+  args: {executable: /bin/bash}
+  environment: "{{ ldap_env }}"
+  delegate_to: "{{ groups['role_app_server'][0] }}"
+  run_once: true
+  changed_when: false
+  register: max_uid
+  when: "'dn:' not in user_exists.stdout"
+  no_log: true
+
+- name: "[joiner] Compute new uid and generate a password"
+  ansible.builtin.set_fact:
+    new_uid: "{{ [ (max_uid.stdout | default('0') | int) + 1, uid_base + 1 ] | max }}"
+    new_password: "{{ lookup('password', '/dev/null length=20 chars=ascii_letters,digits') }}"
+  run_once: true
+  when: "'dn:' not in user_exists.stdout"
+  no_log: true
+
+- name: "[joiner] Add the LDAP user entry (password set separately via ldappasswd)"
+  ansible.builtin.shell: |
+    ldapadd -ZZ -x -H {{ ldap_uri }} -D "cn=admin,{{ ldap_base_dn }}" -w "{{ ldap_admin_pw }}" <<LDIF
+    dn: uid={{ jml_username }},ou=people,{{ ldap_base_dn }}
+    objectClass: inetOrgPerson
+    objectClass: posixAccount
+    objectClass: shadowAccount
+    uid: {{ jml_username }}
+    cn: {{ jml_full_name }}
+    sn: {{ jml_sn }}
+    givenName: {{ jml_given_name }}
+    uidNumber: {{ new_uid }}
+    gidNumber: {{ role_def.primary_gid }}
+    homeDirectory: /home/{{ jml_username }}
+    loginShell: /bin/bash
+    gecos: {{ jml_full_name }}
+    shadowLastChange: 20000
+    shadowMax: 99999
+    LDIF
+  args: {executable: /bin/bash}
+  environment: "{{ ldap_env }}"
+  delegate_to: "{{ groups['role_app_server'][0] }}"
+  run_once: true
+  when: "'dn:' not in user_exists.stdout"
+  no_log: true
+
+- name: "[joiner] Set the user password server-side (ldappasswd)"
+  ansible.builtin.command: >
+    ldappasswd -ZZ -x -H {{ ldap_uri }} -D "cn=admin,{{ ldap_base_dn }}" -w "{{ ldap_admin_pw }}"
+    -s "{{ new_password }}" "uid={{ jml_username }},ou=people,{{ ldap_base_dn }}"
+  environment: "{{ ldap_env }}"
+  delegate_to: "{{ groups['role_app_server'][0] }}"
+  run_once: true
+  when: "'dn:' not in user_exists.stdout"
+  no_log: true
+
+- name: "[joiner] Add user to primary group (memberUid)"
+  ansible.builtin.shell: |
+    ldapmodify -ZZ -x -H {{ ldap_uri }} -D "cn=admin,{{ ldap_base_dn }}" -w "{{ ldap_admin_pw }}" <<LDIF || true
+    dn: cn={{ role_def.primary_group }},ou=groups,{{ ldap_base_dn }}
+    changetype: modify
+    add: memberUid
+    memberUid: {{ jml_username }}
+    LDIF
+  args: {executable: /bin/bash}
+  environment: "{{ ldap_env }}"
+  delegate_to: "{{ groups['role_app_server'][0] }}"
+  run_once: true
+  when: "'dn:' not in user_exists.stdout"
+  no_log: true
+
+- name: "[joiner] Store the new password in Secret Manager"
+  become: false
+  ansible.builtin.shell: |
+    set -o pipefail
+    if ! gcloud secrets describe ldap-user-{{ jml_username }} --project {{ gcp_project }} >/dev/null 2>&1; then
+      gcloud secrets create ldap-user-{{ jml_username }} --project {{ gcp_project }} --replication-policy=automatic
+    fi
+    printf '%s' '{{ new_password }}' | gcloud secrets versions add ldap-user-{{ jml_username }} --project {{ gcp_project }} --data-file=-
+  args: {executable: /bin/bash}
+  delegate_to: localhost
+  run_once: true
+  when: "'dn:' not in user_exists.stdout"
+  no_log: true
+
+- name: "[joiner] Verify SSSD resolves and the user can authenticate (both servers)"
+  ansible.builtin.include_tasks: verify.yml

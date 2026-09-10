@@ -1,0 +1,20 @@
+# Stable internal endpoint so the VMs' Elastic Agents reach Elasticsearch at a fixed VPC IP.
+# The address 10.0.0.21 is reserved in Terraform (google_compute_address.ilb["es"]).
+apiVersion: v1
+kind: Service
+metadata:
+  name: opswarden-es-internal
+  namespace: observability
+  annotations:
+    networking.gke.io/load-balancer-type: "Internal"
+spec:
+  type: LoadBalancer
+  loadBalancerIP: 10.0.0.21
+  externalTrafficPolicy: Local
+  selector:
+    elasticsearch.k8s.elastic.co/cluster-name: opswarden
+    common.k8s.elastic.co/type: elasticsearch
+  ports:
+    - name: https
+      port: 9200
+      targetPort: 9200

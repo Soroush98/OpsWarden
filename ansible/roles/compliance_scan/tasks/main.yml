@@ -1,0 +1,76 @@
+- name: Enable EPEL (provides lynis)
+  ansible.builtin.dnf:
+    name: epel-release
+    state: present
+
+- name: Install lynis
+  ansible.builtin.dnf:
+    name: lynis
+    state: present
+
+- name: Ensure report directory exists
+  ansible.builtin.file:
+    path: "{{ scan_report_dir }}-{{ scan_run_id }}"
+    state: directory
+    mode: "0755"
+
+- name: Run the hardening audit
+  ansible.builtin.command:
+    cmd: >
+      lynis audit system --quick --no-colors
+      --logfile {{ scan_report_dir }}-{{ scan_run_id }}/lynis.log
+      --report-file {{ scan_report_dir }}-{{ scan_run_id }}/lynis-report.dat
+  register: lynis_run
+  changed_when: false
+  failed_when: lynis_run.rc not in [0, 78]   # 78 = findings present
+
+- name: Extract the headline metrics
+  ansible.builtin.shell: |
+    set -o pipefail
+    R={{ scan_report_dir }}-{{ scan_run_id }}/lynis-report.dat
+    printf 'hardening_index=%s\n' "$(awk -F= '/^hardening_index=/{print $2}' "$R" | head -1)"
+    printf 'warnings=%s\n'        "$(grep -c '^warning\[\]=' "$R" || true)"
+    printf 'suggestions=%s\n'     "$(grep -c '^suggestion\[\]=' "$R" || true)"
+    printf 'tests_performed=%s\n' "$(awk -F= '/^lynis_tests_done=/{print $2}' "$R" | head -1)"
+  args: {executable: /bin/bash}
+  register: scan_counts
+  changed_when: false
+
+- name: Build the findings document
+  ansible.builtin.set_fact:
+    scan_doc: >-
+      {{ dict(scan_counts.stdout_lines | select('search', '=') | map('split', '=', 1) | map('list'))
+         | combine({'host': inventory_hostname, 'run_id': scan_run_id,
+                    'benchmark': 'Lynis hardening audit',
+                    '@timestamp': ansible_date_time.iso8601}) }}
+
+- name: Report
+  ansible.builtin.debug:
+    msg: >-
+      {{ inventory_hostname }} hardening index={{ scan_doc.hardening_index }}
+      warnings={{ scan_doc.warnings }} suggestions={{ scan_doc.suggestions }}
+      (tests={{ scan_doc.tests_performed }})
+
+- name: Index the findings into Elasticsearch
+  ansible.builtin.shell: >
+    curl -sk -u "{{ es_user }}:{{ es_password }}"
+    -H 'Content-Type: application/json'
+    -X POST "{{ es_url }}/{{ es_index }}/_doc"
+    -d '{{ scan_doc | to_json }}'
+  args: {executable: /bin/bash}
+  register: es_post
+  changed_when: false
+  failed_when: false
+  when: es_password is defined and es_password | length > 0
+  no_log: true
+
+- name: Indexing result
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} indexed: {{ '\"result\"' in (es_post.stdout | default('')) }}"
+  when: es_password is defined and es_password | length > 0
+
+- name: Fetch the raw report as evidence
+  ansible.builtin.fetch:
+    src: "{{ scan_report_dir }}-{{ scan_run_id }}/lynis-report.dat"
+    dest: "{{ scan_artifacts_dir }}/audit-{{ scan_run_id }}/{{ inventory_hostname }}-lynis-report.dat"
+    flat: true

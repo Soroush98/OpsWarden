@@ -1,0 +1,57 @@
+- name: "[leaver] Admin bind material"
+  ansible.builtin.set_fact:
+    ldap_admin_pw: "{{ lookup('pipe', 'gcloud secrets versions access latest --secret=ldap-admin-password --project ' ~ gcp_project) }}"
+    ldap_env: {LDAPTLS_CACERT: /etc/openldap/certs/opswarden-ca.crt}
+  run_once: true
+  no_log: true
+
+- name: "[leaver] Disable the account in LDAP (nologin shell, expire, scramble password)"
+  ansible.builtin.shell: |
+    SCRAMBLE=$(python3 -c "import os,base64;print('{SSHA}'+base64.b64encode(os.urandom(28)).decode())")
+    ldapmodify -ZZ -x -H {{ ldap_uri }} -D "cn=admin,{{ ldap_base_dn }}" -w "{{ ldap_admin_pw }}" <<LDIF
+    dn: uid={{ jml_username }},ou=people,{{ ldap_base_dn }}
+    changetype: modify
+    replace: loginShell
+    loginShell: /sbin/nologin
+    -
+    replace: shadowExpire
+    shadowExpire: 1
+    -
+    replace: userPassword
+    userPassword: ${SCRAMBLE}
+    LDIF
+  args: {executable: /bin/bash}
+  environment: "{{ ldap_env }}"
+  delegate_to: "{{ groups['role_app_server'][0] }}"
+  run_once: true
+  no_log: true
+
+- name: "[leaver] Remove user from all groups"
+  ansible.builtin.shell: |
+    for g in dba sysadmins developers svc; do
+      ldapmodify -ZZ -x -H {{ ldap_uri }} -D "cn=admin,{{ ldap_base_dn }}" -w "{{ ldap_admin_pw }}" <<LDIF || true
+    dn: cn=${g},ou=groups,{{ ldap_base_dn }}
+    changetype: modify
+    delete: memberUid
+    memberUid: {{ jml_username }}
+    LDIF
+    done
+  args: {executable: /bin/bash}
+  environment: "{{ ldap_env }}"
+  delegate_to: "{{ groups['role_app_server'][0] }}"
+  run_once: true
+  no_log: true
+
+- name: "[leaver] Flag orphaned SSH authorized_keys on every server"
+  ansible.builtin.command: "cat /home/{{ jml_username }}/.ssh/authorized_keys"
+  register: orphan_keys
+  changed_when: false
+  failed_when: false
+
+- name: "[leaver] Report orphaned SSH keys"
+  ansible.builtin.debug:
+    msg: "ORPHANED SSH KEYS for {{ jml_username }} on {{ inventory_hostname }}: {{ orphan_keys.stdout_lines | length }} key(s)"
+  when: orphan_keys.rc == 0 and orphan_keys.stdout | length > 0
+
+- name: "[leaver] Verify the account can no longer bind"
+  ansible.builtin.include_tasks: verify.yml

@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: openldap
+  namespace: identity
+spec:
+  serviceName: openldap
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openldap
+  template:
+    metadata:
+      labels:
+        app: openldap
+    spec:
+      securityContext:
+        runAsUser: 0
+      containers:
+        - name: openldap
+          image: us-central1-docker.pkg.dev/opswarden-lab/opswarden/openldap:1.0.1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: ldap, containerPort: 389 }
+            - { name: ldaps, containerPort: 636 }
+          env:
+            - name: LDAP_ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: openldap-passwords, key: admin-password } }
+            - name: LDAP_SSSD_BIND_PASSWORD
+              valueFrom: { secretKeyRef: { name: openldap-passwords, key: sssd-bind-password } }
+            - name: LDAP_SEED_USER_PASSWORD
+              valueFrom: { secretKeyRef: { name: openldap-passwords, key: seed-user-password } }
+            - name: LDAP_SVC_BACKUP_PASSWORD
+              valueFrom: { secretKeyRef: { name: openldap-passwords, key: svc-backup-password } }
+          volumeMounts:
+            - { name: ldap-data, mountPath: /var/lib/ldap }
+            - { name: slapd-config, mountPath: /etc/ldap/slapd.d }
+            - { name: tls, mountPath: /container/tls, readOnly: true }
+          readinessProbe:
+            tcpSocket: { port: 389 }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: 389 }
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { memory: 1Gi }
+      volumes:
+        - name: tls
+          secret:
+            secretName: openldap-tls
+            defaultMode: 0444
+  volumeClaimTemplates:
+    - metadata:
+        name: ldap-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: standard-rwo
+        resources: { requests: { storage: 1Gi } }
+    - metadata:
+        name: slapd-config
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: standard-rwo
+        resources: { requests: { storage: 1Gi } }

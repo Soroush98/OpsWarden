@@ -1,0 +1,5 @@
+# Patch-validation contract (typed).
+patch_check_only: true          # true = dnf check-update (no changes); false = dnf -y update
+patch_run_id: "manual"          # correlates evidence with a ticket
+patch_remote_dir: "/var/tmp/opswarden-patch"
+patch_artifacts_dir: "{{ playbook_dir }}/../artifacts"

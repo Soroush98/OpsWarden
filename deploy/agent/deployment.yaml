@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opswarden-api
+  namespace: opswarden
+  labels: { app: opswarden-api }
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy: { type: Recreate }     # single writer to the SQLite PVC
+  selector:
+    matchLabels: { app: opswarden-api }
+  template:
+    metadata:
+      labels: { app: opswarden-api }
+    spec:
+      serviceAccountName: opswarden-agent
+      containers:
+        - name: api
+          image: us-central1-docker.pkg.dev/opswarden-lab/opswarden/agent:1.4.1
+          # Always pull: a rebuilt tag must never be served from a node's cache.
+          imagePullPolicy: Always
+          command: ["/entrypoint.sh", "opswarden-api"]
+          ports: [{ containerPort: 8080 }]
+          env:
+            - { name: GCP_PROJECT, value: opswarden-lab }
+            - { name: OPSWARDEN_ES_URL, value: "https://opswarden-es-http.observability.svc:9200" }
+            - { name: OPSWARDEN_ANSIBLE_DIR, value: "/app/ansible" }
+            - { name: OPSWARDEN_ANSIBLE_CONFIG, value: "cluster.cfg" }
+            - { name: OPSWARDEN_DB_PATH, value: "/data/opswarden.db" }
+            - { name: OPSWARDEN_BASE_URL, value: "http://localhost:8080" }
+            - { name: OPSWARDEN_SERVICENOW_INSTANCE, value: "dev294518" }
+            - { name: OPSWARDEN_SERVICENOW_USER, value: "admin" }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: secrets, mountPath: /secrets }
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { memory: 1Gi }
+      volumes:
+        - { name: data, persistentVolumeClaim: { claimName: opswarden-data } }
+        - { name: secrets, emptyDir: { medium: Memory } }

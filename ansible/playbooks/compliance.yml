@@ -1,0 +1,9 @@
+# Hardening audit (Lynis): findings shipped to Elasticsearch, raw report fetched as evidence.
+# Contract (typed): scan_run_id.
+#   ansible-playbook playbooks/compliance.yml -e scan_run_id=AUDIT-2026-09
+- name: Hardening audit
+  hosts: role_app_server
+  become: true
+  gather_facts: true
+  roles:
+    - compliance_scan

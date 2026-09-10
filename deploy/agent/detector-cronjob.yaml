@@ -1,0 +1,29 @@
+# Scans Elasticsearch every 2 minutes and forwards any event to the agent API.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: opswarden-detector
+  namespace: opswarden
+spec:
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        spec:
+          serviceAccountName: opswarden-agent
+          restartPolicy: Never
+          containers:
+            - name: detector
+              image: us-central1-docker.pkg.dev/opswarden-lab/opswarden/agent:1.4.1
+              command: ["/entrypoint.sh", "opswarden-detector", "--once"]
+              env:
+                - { name: GCP_PROJECT, value: opswarden-lab }
+                - { name: OPSWARDEN_ES_URL, value: "https://opswarden-es-http.observability.svc:9200" }
+                - { name: OPSWARDEN_API_URL, value: "http://opswarden-api.opswarden.svc:8080" }
+                - { name: OPSWARDEN_BRUTE_FORCE_THRESHOLD, value: "10" }
+                - { name: OPSWARDEN_WINDOW_MINUTES, value: "10" }
+              resources:
+                requests: { cpu: 100m, memory: 256Mi }
+                limits: { memory: 512Mi }

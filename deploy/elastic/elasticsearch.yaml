@@ -1,0 +1,49 @@
+# Single-node Elasticsearch for the lab. Bump count to 3 (and drop the replicas-0 template)
+# to demo a real cluster surviving a pod loss.
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: opswarden
+  namespace: observability
+spec:
+  version: 9.5.3
+
+  # The VMs' Elastic Agents reach ES over an internal LB (10.0.0.21 / es.opswarden.internal),
+  # so those names must be in the HTTP cert SANs.
+  http:
+    tls:
+      selfSignedCertificate:
+        subjectAltNames:
+          - dns: es.opswarden.internal
+          - ip: 10.0.0.21
+
+  nodeSets:
+    - name: default
+      count: 1
+      podTemplate:
+        spec:
+          initContainers:
+            # Elasticsearch requires vm.max_map_count >= 262144 on the host kernel.
+            - name: sysctl
+              securityContext:
+                privileged: true
+                runAsUser: 0
+              command: ["sh", "-c", "sysctl -w vm.max_map_count=262144"]
+          containers:
+            - name: elasticsearch
+              resources:
+                requests:
+                  memory: 4Gi
+                  cpu: "1"
+                limits:
+                  memory: 4Gi
+                  cpu: "2"
+      volumeClaimTemplates:
+        - metadata:
+            name: elasticsearch-data
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: standard-rwo
+            resources:
+              requests:
+                storage: 50Gi

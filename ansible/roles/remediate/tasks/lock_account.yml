@@ -1,0 +1,45 @@
+- name: "[lock] Admin bind material"
+  ansible.builtin.set_fact:
+    ldap_admin_pw: "{{ lookup('pipe', 'gcloud secrets versions access latest --secret=ldap-admin-password --project ' ~ gcp_project) }}"
+    ldap_env: {LDAPTLS_CACERT: /etc/openldap/certs/opswarden-ca.crt}
+  run_once: true
+  no_log: true
+
+- name: "[lock] Disable the account in LDAP (scramble password, expire, nologin)"
+  ansible.builtin.shell: |
+    SCRAMBLE=$(python3 -c "import os,base64;print('{SSHA}'+base64.b64encode(os.urandom(28)).decode())")
+    ldapmodify -ZZ -x -H {{ ldap_uri }} -D "cn=admin,{{ ldap_base_dn }}" -w "{{ ldap_admin_pw }}" <<LDIF
+    dn: uid={{ remediate_username }},ou=people,{{ ldap_base_dn }}
+    changetype: modify
+    replace: userPassword
+    userPassword: ${SCRAMBLE}
+    -
+    replace: shadowExpire
+    shadowExpire: 1
+    -
+    replace: loginShell
+    loginShell: /sbin/nologin
+    LDIF
+  args: {executable: /bin/bash}
+  environment: "{{ ldap_env }}"
+  delegate_to: "{{ groups['role_app_server'][0] }}"
+  run_once: true
+  no_log: true
+
+- name: "[lock] Post-check: the account can no longer bind"
+  ansible.builtin.command: >
+    ldapwhoami -ZZ -x -H {{ ldap_uri }}
+    -D "uid={{ remediate_username }},ou=people,{{ ldap_base_dn }}"
+    -w "{{ lookup('pipe', 'gcloud secrets versions access latest --secret=' ~ (secret_map[remediate_username] | default('ldap-user-' ~ remediate_username)) ~ ' --project ' ~ gcp_project) }}"
+  environment: "{{ ldap_env }}"
+  delegate_to: "{{ groups['role_app_server'][0] }}"
+  run_once: true
+  register: lock_bind
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: "[lock] Result"
+  ansible.builtin.debug:
+    msg: "LOCKED {{ remediate_username }} in LDAP — post-check bind: {{ 'STILL WORKS (FAIL)' if lock_bind.rc == 0 else 'REJECTED (as intended)' }}"
+  run_once: true

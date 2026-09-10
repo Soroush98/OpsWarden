@@ -1,0 +1,14 @@
+# Security remediation, one discrete reversible action per run (maps to one human approval).
+# Contract (typed): remediate_action (lock_account|unlock_account|block_ip|unblock_ip),
+#                    remediate_username | remediate_ip, remediate_run_id.
+- name: Remediation
+  hosts: role_app_server
+  become: true
+  gather_facts: false
+  vars:
+    # Where to find a user's known password for lock post-check / unlock restore.
+    secret_map:
+      svc-backup: ldap-svc-backup-password
+      soroosh: ldap-seed-user-password
+  roles:
+    - remediate

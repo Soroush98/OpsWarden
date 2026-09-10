@@ -1,0 +1,8 @@
+# Join the app servers to LDAP via SSSD (auth, identity, and sudo through the directory).
+# Run: see ansible/README.md (fetches bind password + CA from Secret Manager).
+- name: Configure SSSD/LDAP on app servers
+  hosts: role_app_server
+  become: true
+  gather_facts: true
+  roles:
+    - sssd

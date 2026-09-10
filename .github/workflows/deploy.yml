@@ -1,0 +1,38 @@
+# Build + push the agent image and roll the deployment via Workload Identity Federation
+# (no JSON keys). Requires one-time WIF setup; see docs/deploy.md. Manual trigger by default.
+name: deploy
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write   # for Workload Identity Federation
+
+env:
+  PROJECT: opswarden-lab
+  REGION: us-central1
+  IMAGE: us-central1-docker.pkg.dev/opswarden-lab/opswarden/agent
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build & push (Trivy-scanned)
+        run: |
+          gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
+          TAG=${GITHUB_SHA::12}
+          docker build -f docker/Dockerfile -t $IMAGE:$TAG .
+          docker push $IMAGE:$TAG
+          echo "TAG=$TAG" >> $GITHUB_ENV
+      - uses: google-github-actions/get-gke-credentials@v2
+        with: { cluster_name: opswarden, location: us-central1-a }
+      - name: Roll deployment
+        run: |
+          kubectl -n opswarden set image deployment/opswarden-api api=$IMAGE:$TAG
+          kubectl -n opswarden rollout status deployment/opswarden-api --timeout=180s

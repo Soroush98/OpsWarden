@@ -1,0 +1,32 @@
+apiVersion: kibana.k8s.elastic.co/v1
+kind: Kibana
+metadata:
+  name: opswarden
+  namespace: observability
+spec:
+  version: 9.5.3
+  count: 1
+
+  elasticsearchRef:
+    name: opswarden
+
+  http:
+    tls:
+      selfSignedCertificate:
+        # Plain HTTP inside the cluster; TLS is terminated at the Ingress / oauth2-proxy later.
+        disabled: true
+
+  config:
+    server.publicBaseUrl: http://localhost:5601
+
+  podTemplate:
+    spec:
+      containers:
+        - name: kibana
+          resources:
+            requests:
+              memory: 1Gi
+              cpu: 500m
+            limits:
+              memory: 1536Mi
+              cpu: "1"

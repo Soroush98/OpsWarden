@@ -1,0 +1,21 @@
+# Role -> LDAP groups + sudo. The JML workflow only accepts a role key from this catalog,
+# so the agent can never invent arbitrary privileges. Edit here to change what a role grants.
+role_catalog:
+  dba:
+    description: Database team
+    primary_group: dba
+    primary_gid: 5000
+    supplementary_groups: []
+    sudo: false
+  sysadmin:
+    description: Linux administrators
+    primary_group: sysadmins
+    primary_gid: 5001
+    supplementary_groups: []
+    sudo: true            # covered by the existing %sysadmins sudo rule
+  developer:
+    description: Application developers
+    primary_group: developers
+    primary_gid: 5002
+    supplementary_groups: []
+    sudo: false

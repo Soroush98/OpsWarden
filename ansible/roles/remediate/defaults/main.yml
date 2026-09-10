@@ -1,0 +1,6 @@
+# Remediation contract (typed). The agent may only pass these; each action is a discrete,
+# reversible step so a human approval maps to exactly one change.
+remediate_action: ""       # lock_account | unlock_account | block_ip | unblock_ip
+remediate_username: ""     # for *_account
+remediate_ip: ""           # for *_ip
+remediate_run_id: "manual"

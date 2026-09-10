@@ -1,0 +1,17 @@
+# Helm values for the ECK operator (chart: elastic/eck-operator).
+installCRDs: true
+
+# Watch all namespaces; the stack itself lives in "observability".
+managedNamespaces: []
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 150Mi
+  limits:
+    memory: 512Mi
+
+config:
+  logVerbosity: "0"
+  metrics:
+    port: "0"

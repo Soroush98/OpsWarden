@@ -1,0 +1,17 @@
+- name: "[unblock] Remove the drop rule for {{ remediate_ip }}"
+  ansible.posix.firewalld:
+    rich_rule: "rule family=ipv4 source address={{ remediate_ip }} drop"
+    permanent: true
+    immediate: true
+    state: disabled
+  ignore_errors: true
+
+- name: "[unblock] Post-check"
+  ansible.builtin.command: firewall-cmd --list-rich-rules
+  register: rich
+  changed_when: false
+  failed_when: false
+
+- name: "[unblock] Result"
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }}: {{ remediate_ip }} still blocked = {{ remediate_ip in (rich.stdout | default('')) }}"

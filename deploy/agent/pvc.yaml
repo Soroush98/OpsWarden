@@ -1,0 +1,12 @@
+# Holds the SQLite store + LangGraph checkpointer so approvals survive a pod restart.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: opswarden-data
+  namespace: opswarden
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: standard-rwo
+  resources:
+    requests:
+      storage: 1Gi

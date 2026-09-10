@@ -1,0 +1,11 @@
+# Joiner / Mover / Leaver against LDAP, with per-server verification.
+# Contract (typed): jml_action, jml_username, jml_role, jml_full_name/given_name/sn, jml_run_id.
+# Example:
+#   ansible-playbook playbooks/jml.yml -e jml_action=joiner -e jml_username=priya \
+#     -e jml_role=dba -e 'jml_full_name=Priya Sharma' -e jml_given_name=Priya -e jml_sn=Sharma
+- name: JML workflow
+  hosts: role_app_server
+  become: true
+  gather_facts: false
+  roles:
+    - ldap_user

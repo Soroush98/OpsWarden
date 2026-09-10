@@ -1,0 +1,17 @@
+- name: Load the role catalog
+  ansible.builtin.include_vars:
+    file: "{{ playbook_dir }}/../vars/role_catalog.yml"
+
+- name: Validate JML parameters
+  ansible.builtin.assert:
+    that:
+      - jml_action in ['joiner', 'mover', 'leaver']
+      - jml_username | length > 0
+      - jml_username is match('^[a-z_][a-z0-9_-]*$')
+      - (jml_action in ['joiner','mover']) | ternary(jml_role in role_catalog, true)
+    fail_msg: "Invalid JML parameters (action={{ jml_action }}, user={{ jml_username }}, role={{ jml_role }})"
+    quiet: true
+  run_once: true
+
+- name: Run the {{ jml_action }} workflow
+  ansible.builtin.include_tasks: "{{ jml_action }}.yml"

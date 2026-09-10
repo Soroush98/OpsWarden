@@ -1,0 +1,33 @@
+dn: uid=soroosh,ou=people,@@BASE_DN@@
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: soroosh
+cn: Soroosh Esmailian
+sn: Esmailian
+givenName: Soroosh
+uidNumber: 10000
+gidNumber: 5001
+homeDirectory: /home/soroosh
+loginShell: /bin/bash
+gecos: Soroosh Esmailian
+userPassword: @@SEED_USER_HASH@@
+shadowLastChange: 20000
+shadowMax: 99999
+
+dn: uid=svc-backup,ou=people,@@BASE_DN@@
+objectClass: inetOrgPerson
+objectClass: posixAccount
+objectClass: shadowAccount
+uid: svc-backup
+cn: Backup Service Account
+sn: Service
+givenName: Backup
+uidNumber: 20001
+gidNumber: 6000
+homeDirectory: /home/svc-backup
+loginShell: /bin/bash
+gecos: Backup Service Account (dormant)
+userPassword: @@SVC_BACKUP_HASH@@
+shadowLastChange: 17000
+shadowMax: 99999

@@ -1,0 +1,125 @@
+- name: Validate patch parameters
+  ansible.builtin.assert:
+    that:
+      - (patch_check_only | string | lower) in ["true","false"]
+      - patch_run_id | length > 0
+    quiet: true
+
+- name: Snapshot commands (name -> command)
+  ansible.builtin.set_fact:
+    snap_cmds:
+      services: "systemctl list-units --type=service --state=running --no-legend --no-pager | awk '{print $1}' | sort"
+      packages: "rpm -qa --qf '%{NAME}-%{VERSION}-%{RELEASE}\\n' | sort"
+      ports:    "ss -H -ltn | awk '{print $4}' | sed 's/.*://' | sort -un"
+      disk:     "df -Ph --output=source,size,used,avail,pcent,target | sort"
+      errors:   "journalctl -p err -n 40 --no-pager -o short-iso 2>/dev/null | tail -40 || true"
+    run_dir: "{{ patch_remote_dir }}-{{ patch_run_id }}"
+
+- name: Create pre/post/diff dirs on the host
+  ansible.builtin.file:
+    path: "{{ run_dir }}/{{ item }}"
+    state: directory
+    mode: "0755"
+  loop: [pre, post, diff]
+
+- name: PRE snapshot
+  ansible.builtin.shell: "{{ item.value }}"
+  args: {executable: /bin/bash}
+  register: pre_snaps
+  changed_when: false
+  loop: "{{ snap_cmds | dict2items }}"
+  loop_control: {label: "{{ item.key }}"}
+
+- name: Save PRE snapshot files
+  ansible.builtin.copy:
+    content: "{{ item.stdout }}\n"
+    dest: "{{ run_dir }}/pre/{{ item.item.key }}.txt"
+    mode: "0644"
+  loop: "{{ pre_snaps.results }}"
+  loop_control: {label: "{{ item.item.key }}"}
+
+- name: Run dnf check-update (no changes)
+  ansible.builtin.shell: "dnf -q check-update || true"
+  args: {executable: /bin/bash}
+  register: dnf_check
+  changed_when: false
+  when: patch_check_only | bool
+
+- name: Run dnf update
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+  register: dnf_update
+  when: not (patch_check_only | bool)
+
+- name: POST snapshot
+  ansible.builtin.shell: "{{ item.value }}"
+  args: {executable: /bin/bash}
+  register: post_snaps
+  changed_when: false
+  loop: "{{ snap_cmds | dict2items }}"
+  loop_control: {label: "{{ item.key }}"}
+
+- name: Save POST snapshot files
+  ansible.builtin.copy:
+    content: "{{ item.stdout }}\n"
+    dest: "{{ run_dir }}/post/{{ item.item.key }}.txt"
+    mode: "0644"
+  loop: "{{ post_snaps.results }}"
+  loop_control: {label: "{{ item.item.key }}"}
+
+- name: Diff each snapshot section
+  ansible.builtin.shell: "diff -u {{ run_dir }}/pre/{{ item }}.txt {{ run_dir }}/post/{{ item }}.txt > {{ run_dir }}/diff/{{ item }}.diff || true"
+  args: {executable: /bin/bash}
+  changed_when: false
+  loop: [services, packages, ports, disk, errors]
+
+- name: Compute package delta (structured)
+  ansible.builtin.set_fact:
+    pre_pkgs: "{{ (pre_snaps.results | selectattr('item.key','eq','packages') | first).stdout_lines }}"
+    post_pkgs: "{{ (post_snaps.results | selectattr('item.key','eq','packages') | first).stdout_lines }}"
+    pre_ports: "{{ (pre_snaps.results | selectattr('item.key','eq','ports') | first).stdout_lines }}"
+    post_ports: "{{ (post_snaps.results | selectattr('item.key','eq','ports') | first).stdout_lines }}"
+
+- name: Build evidence summary
+  ansible.builtin.set_fact:
+    patch_summary:
+      host: "{{ inventory_hostname }}"
+      run_id: "{{ patch_run_id }}"
+      mode: "{{ 'check-only' if patch_check_only | bool else 'update' }}"
+      packages_added: "{{ post_pkgs | difference(pre_pkgs) }}"
+      packages_removed: "{{ pre_pkgs | difference(post_pkgs) }}"
+      packages_changed_count: "{{ (post_pkgs | difference(pre_pkgs)) | length }}"
+      ports_opened: "{{ post_ports | difference(pre_ports) }}"
+      ports_closed: "{{ pre_ports | difference(post_ports) }}"
+
+- name: Write summary.json on host
+  ansible.builtin.copy:
+    content: "{{ patch_summary | to_nice_json }}\n"
+    dest: "{{ run_dir }}/summary.json"
+    mode: "0644"
+
+- name: Fetch pre/post snapshot files to the controller
+  ansible.builtin.fetch:
+    src: "{{ run_dir }}/{{ item.0 }}/{{ item.1 }}.txt"
+    dest: "{{ patch_artifacts_dir }}/patch-{{ patch_run_id }}/{{ inventory_hostname }}/{{ item.0 }}/"
+    flat: true
+  loop: "{{ ['pre','post'] | product(['services','packages','ports','disk','errors']) | list }}"
+  loop_control: {label: "{{ item.0 }}/{{ item.1 }}"}
+
+- name: Fetch diff files to the controller
+  ansible.builtin.fetch:
+    src: "{{ run_dir }}/diff/{{ item }}.diff"
+    dest: "{{ patch_artifacts_dir }}/patch-{{ patch_run_id }}/{{ inventory_hostname }}/diff/"
+    flat: true
+  loop: [services, packages, ports, disk, errors]
+
+- name: Fetch summary.json to the controller
+  ansible.builtin.fetch:
+    src: "{{ run_dir }}/summary.json"
+    dest: "{{ patch_artifacts_dir }}/patch-{{ patch_run_id }}/{{ inventory_hostname }}/summary.json"
+    flat: true
+
+- name: Show summary
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} [{{ patch_summary.mode }}]: {{ patch_summary.packages_changed_count }} package changes, ports opened={{ patch_summary.ports_opened }}, closed={{ patch_summary.ports_closed }}"

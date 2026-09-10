@@ -1,0 +1,9 @@
+# JML contract (typed parameters the agent passes). Validated in tasks/main.yml.
+jml_action: ""          # joiner | mover | leaver
+jml_username: ""        # POSIX login, e.g. "priya"
+jml_role: ""            # catalog key (joiner/mover): dba | sysadmin | developer
+jml_full_name: ""       # joiner
+jml_given_name: ""      # joiner
+jml_sn: ""              # joiner
+jml_run_id: "manual"    # correlates evidence with a ticket
+uid_base: 10000         # POSIX uids allocated from here upward

@@ -1,0 +1,37 @@
+# Managed by Ansible (role: sssd). Do not edit by hand.
+[sssd]
+config_file_version = 2
+services = nss, pam, sudo
+domains = opswarden
+
+[nss]
+homedir_substring = /home
+
+[pam]
+offline_credentials_expiration = 7
+
+[sudo]
+
+[domain/opswarden]
+id_provider = ldap
+auth_provider = ldap
+sudo_provider = ldap
+chpass_provider = ldap
+
+# GCP internal DNS returns NODATA for AAAA; keep SSSD from failing name resolution on it.
+lookup_family_order = ipv4_only
+
+ldap_uri = {{ ldap_uri }}
+ldap_search_base = {{ ldap_base_dn }}
+ldap_default_bind_dn = {{ ldap_bind_dn }}
+ldap_default_authtok = {{ ldap_bind_password }}
+ldap_sudo_search_base = {{ ldap_sudo_base }}
+
+ldap_tls_cacert = /etc/openldap/certs/opswarden-ca.crt
+ldap_tls_reqcert = demand
+ldap_id_use_start_tls = true
+
+cache_credentials = true
+enumerate = false
+override_homedir = /home/%u
+default_shell = /bin/bash

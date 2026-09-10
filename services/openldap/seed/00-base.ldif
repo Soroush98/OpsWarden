@@ -1,0 +1,15 @@
+dn: ou=people,@@BASE_DN@@
+objectClass: organizationalUnit
+ou: people
+
+dn: ou=groups,@@BASE_DN@@
+objectClass: organizationalUnit
+ou: groups
+
+dn: ou=services,@@BASE_DN@@
+objectClass: organizationalUnit
+ou: services
+
+dn: ou=sudoers,@@BASE_DN@@
+objectClass: organizationalUnit
+ou: sudoers

@@ -1,0 +1,12 @@
+# Hardening audit contract.
+#
+# Note: the OpenSCAP CIS content is installed on these hosts, but on this Rocky 9 GCE image the
+# CPE platform check marks every selected rule "notapplicable" (verified against both the rl9 and
+# rhel9 data streams), so the scan yields no pass/fail. Lynis is used instead - it was the
+# sanctioned alternative in the plan and produces a hardening index plus actionable findings.
+scan_run_id: "manual"
+scan_report_dir: "/var/tmp/opswarden-audit"
+scan_artifacts_dir: "{{ playbook_dir }}/../artifacts"
+es_url: "https://es.opswarden.internal:9200"   # internal LB, reachable from the VMs
+es_user: "opswarden-agent"
+es_index: "compliance-hardening"

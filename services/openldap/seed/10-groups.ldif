@@ -1,0 +1,25 @@
+dn: cn=dba,ou=groups,@@BASE_DN@@
+objectClass: posixGroup
+cn: dba
+gidNumber: 5000
+description: Database team
+
+dn: cn=sysadmins,ou=groups,@@BASE_DN@@
+objectClass: posixGroup
+cn: sysadmins
+gidNumber: 5001
+description: Linux administrators
+memberUid: soroosh
+
+dn: cn=developers,ou=groups,@@BASE_DN@@
+objectClass: posixGroup
+cn: developers
+gidNumber: 5002
+description: Application developers
+
+dn: cn=svc,ou=groups,@@BASE_DN@@
+objectClass: posixGroup
+cn: svc
+gidNumber: 6000
+description: Service accounts
+memberUid: svc-backup

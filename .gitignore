@@ -1,0 +1,31 @@
+
+!*.pub
+# OS / editors
+# Python
+# Secrets and local config
+# Terraform
+**/.terraform/
+*.key
+*.pem
+*.pyc
+*.tfplan
+*.tfstate
+*.tfstate.*
+*_override.tf
+*_override.tf.json
+.DS_Store
+.env
+.idea/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+.vscode/
+__pycache__/
+crash.log
+id_*
+override.tf
+override.tf.json
+uv.lock
+opswarden.db
+*.db

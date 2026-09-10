@@ -1,0 +1,7 @@
+dn: cn=sssd-bind,ou=services,@@BASE_DN@@
+objectClass: inetOrgPerson
+objectClass: simpleSecurityObject
+cn: sssd-bind
+sn: bind
+userPassword: @@SSSD_BIND_HASH@@
+description: Read-only bind account used by SSSD on the app servers
